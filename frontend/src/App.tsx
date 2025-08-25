@@ -1,35 +1,70 @@
 import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import ChatHeader from './components/ChatHeader'
+import MessageList from './components/MessageList'
+import ChatInput from './components/ChatInput'
+import ErrorBanner from './components/ErrorBanner'
+import type { Message } from './types'
+import { sendChat } from './lib/api'
 
-function App() {
-  const [count, setCount] = useState(0)
+
+export default function App() {
+  const [messages, setMessages] = useState<Message[]>([])
+  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+
+  async function handleSend(text: string) {
+    setError(null)
+    const userMsg: Message = {
+      role: 'user',
+      content: text,
+      id: crypto.randomUUID?.() ?? Math.random().toString(36).slice(2),
+      createdAt: Date.now(),
+    }
+    setMessages((prev) => [...prev, userMsg])
+
+
+    try {
+      setIsLoading(true)
+      const res = await sendChat(text, sessionId)
+      setSessionId(res.session_id)
+      const botMsg: Message = {
+        role: 'assistant',
+        content: res.message,
+        id: crypto.randomUUID?.() ?? Math.random().toString(36).slice(2),
+        createdAt: Date.now(),
+      }
+      setMessages((prev) => [...prev, botMsg])
+    } catch (e) {
+      setError('Error fetching response')
+      const botMsg: Message = {
+        role: 'assistant',
+        content: 'Error fetching response',
+        id: crypto.randomUUID?.() ?? Math.random().toString(36).slice(2),
+        createdAt: Date.now(),
+      }
+      setMessages((prev) => [...prev, botMsg])
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
 
   return (
-    <>
-      <div className='justify-center flex'>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
+    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white text-gray-900">
+      <ChatHeader title="Chatbot" subtitle="Tailwind + Components" />
+
+
+      {error && <ErrorBanner message={error} />}
+
+
+      <main className="mx-auto max-w-2xl h-[calc(100vh-140px)] flex flex-col">
+        <MessageList messages={messages} isLoading={isLoading} />
+      </main>
+
+
+      <ChatInput onSend={handleSend} disabled={isLoading} />
+    </div>
   )
 }
-
-export default App

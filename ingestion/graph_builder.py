@@ -92,7 +92,7 @@ class GraphBuilder:
         for i, chunk in enumerate(chunks):
             try:
                 # Create episode ID
-                episode_id = f"{document_source}_{chunk.index}_{datetime.now().timestamp()}"
+                episode_id = f"{document_source}_{chunk.index}_{datetime.now().timestamp()}"     
                 
                 # Prepare episode content with size limits
                 episode_content = self._prepare_episode_content(
