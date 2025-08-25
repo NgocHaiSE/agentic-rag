@@ -114,7 +114,7 @@ function MessageBubble({ msg, isStreaming = false }: Props) {
               <span className="font-medium">Công cụ đã sử dụng:</span>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {msg.toolsUsed.map((tool, idx) => (
+              {msg.toolsUsed?.map((tool, idx) => (
                 <div key={idx} className="bg-slate-50 border border-slate-200 rounded-xl p-3 hover:bg-slate-100 transition-colors">
                   <div className="flex items-start space-x-2">
                     <div className="w-6 h-6 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -152,7 +152,7 @@ function MessageBubble({ msg, isStreaming = false }: Props) {
         <div className={`mt-2 text-xs text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity duration-200 ${
           isUser ? 'text-right' : 'text-left'
         }`}>
-          {formatTime(msg.createdAt)}
+          {msg.createdAt !== undefined ? formatTime(msg.createdAt) : ''}
         </div>
       </div>
     </div>

@@ -18,8 +18,8 @@ export default function App() {
   const [thinkingContent, setThinkingContent] = useState<string>('')
   
   // Ref để track tin nhắn đang streaming
-  const streamingMessageId = useRef<string>()
-  const abortControllerRef = useRef<AbortController>()
+  const streamingMessageId = useRef<string | undefined>(undefined)
+  const abortControllerRef = useRef<AbortController | undefined>(undefined)
 
   // Cleanup khi component unmount
   useEffect(() => {
