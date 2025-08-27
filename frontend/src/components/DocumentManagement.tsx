@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Search,
   Filter,
-  MoreVertical,
   Upload,
   FolderPlus,
   ChevronRight,
@@ -11,13 +10,6 @@ import {
   FileSpreadsheet,
   FileCode,
   FileImage,
-  Eye,
-  Download,
-  Share2,
-  Trash2,
-  Star,
-  Clock,
-  User,
   Home,
   FileVideo,
   LayoutGrid,
@@ -25,15 +17,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import {
   Select,
   SelectContent,
@@ -44,24 +28,15 @@ import {
 import {
   Table,
   TableBody,
-  TableCell,
   TableHead,
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { DocumentCard } from './document/DocumentCard';
+import { DocumentTableRow } from './document/DocumentTableRow';
+import type { DocumentItem, StatusType } from '@/types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
-
-interface DocumentItem {
-  id: string;
-  name: string;
-  type: string;
-  size: string;
-  uploadedBy: string;
-  uploadedAt: string;
-  status: StatusType;
-  tags: string[];
-}
 
 const mockDocuments: DocumentItem[] = [
   {
@@ -134,8 +109,6 @@ interface StatusConfig {
   color: string;
   text: string;
 }
-
-type StatusType = 'Đã xử lý' | 'Đang xử lý' | 'Hoàn thành' | 'Lỗi';
 
 const getStatusBadge = (status: StatusType) => {
   const statusConfig: Record<StatusType, StatusConfig> = {
@@ -226,8 +199,7 @@ export default function DocumentManagement() {
           {/* Title and Actions */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Thư viện Tài liệu</h1>
-              <p className="text-gray-600 mt-1">Quản lý và tìm kiếm tài liệu một cách hiệu quả</p>
+              <h1 className="text-2xl font-bold text-gray-900">Quản lý Tài liệu</h1>
             </div>
             <div className="flex items-center gap-2">
               <Button variant="outline" className="flex items-center gap-2 hover:bg-zinc-200">
@@ -264,7 +236,7 @@ export default function DocumentManagement() {
                 <SelectTrigger className="w-[130px] h-10">
                   <SelectValue placeholder="Tất cả định dạng" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="z-[100]">
                   <SelectItem value="all">Tất cả định dạng</SelectItem>
                   <SelectItem value="PDF">PDF</SelectItem>
                   <SelectItem value="XLSX">Excel</SelectItem>
@@ -277,7 +249,7 @@ export default function DocumentManagement() {
                 <SelectTrigger className="w=[130px] h-10">
                   <SelectValue placeholder="Trạng thái" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="z-[100]">
                   <SelectItem value="all">Tất cả</SelectItem>
                   <SelectItem value="Đã xử lý">Đã xử lý</SelectItem>
                   <SelectItem value="Đang xử lý">Đang xử lý</SelectItem>
@@ -289,7 +261,7 @@ export default function DocumentManagement() {
                 <SelectTrigger className="w-[130px] h-10">
                   <SelectValue placeholder="Sắp xếp" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="z-[100]">
                   <SelectItem value="newest">Mới nhất</SelectItem>
                   <SelectItem value="oldest">Cũ nhất</SelectItem>
                   <SelectItem value="name">Tên A-Z</SelectItem>
@@ -335,150 +307,44 @@ export default function DocumentManagement() {
 
       {/* Document Area */}
       <div className="px-6 py-6">
-        {viewMode === 'grid' ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {currentDocuments.map((doc) => (
-              <Card key={doc.id} className="group hover:shadow-lg transition-all duration-200 border border-gray-200 bg-white cursor-pointer">
-                <CardContent className="p-4">
-                  {/* File Header */}
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-start gap-3 w-full">
-                      <div className="shrink-0 mt-1">
-                        {getFileIcon(doc.type)}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <h3 className="font-medium text-gray-900 text-sm line-clamp-2 hover:line-clamp-none group-hover:text-blue-600">
-                          {doc.name}
-                        </h3>
-                        <p className="text-xs text-gray-500 mt-1">{doc.type} • {doc.size}</p>
-                      </div>
-                    </div>
-                    {/* DropdownMenu moved outside flex-1 for better clickability */}
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0 shrink-0">
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem>
-                          <Download className="h-4 w-4 mr-2 cursor-pointer" />
-                          Tải xuống
-                        </DropdownMenuItem>
-                        <DropdownMenuItem>
-                          <Share2 className="h-4 w-4 mr-2 cursor-pointer" />
-                          Chia sẻ
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem className="text-red-600">
-                          <Trash2 className="h-4 w-4 mr-2 cursor-pointer" />
-                          Xóa
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-
-                  {/* Status and Tags */}
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-2">
-                      {getStatusBadge(doc.status as StatusType)}
-                    </div>
-
-                    <div className="flex flex-wrap gap-1">
-                      {doc.tags.map((tag, index) => (
-                        <Badge
-                          key={index}
-                          variant="outline"
-                          className="text-xs bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100"
-                        >
-                          {tag}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Meta Info */}
-                  <div className="mt-4 pt-3 border-t border-gray-100 text-xs text-gray-500 space-y-1.5">
-                    <div className="flex items-center gap-1.5">
-                      <User className="h-3.5 w-3.5" />
-                      <span className="truncate">{doc.uploadedBy}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <Clock className="h-3.5 w-3.5" />
-                      <span className="truncate">{doc.uploadedAt}</span>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        ) : (
-          <div className="overflow-x-auto border-gray-200">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[40%]">Tài liệu</TableHead>
-                  <TableHead>Trạng thái</TableHead>
-                  <TableHead>Người tải lên</TableHead>
-                  <TableHead>Thời gian</TableHead>
-                  <TableHead>Tags</TableHead>
-                  <TableHead></TableHead> {/* Dropdown column */}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {currentDocuments.map((doc) => (
-                  <TableRow key={doc.id} className="hover:bg-gray-50">
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        {getFileIcon(doc.type)}
-                        <div>
-                          <div className="font-medium text-gray-900">{doc.name}</div>
-                          <div className="text-xs text-gray-500">{doc.type} • {doc.size}</div>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>{getStatusBadge(doc.status as StatusType)}</TableCell>
-                    <TableCell className="text-sm text-gray-500">{doc.uploadedBy}</TableCell>
-                    <TableCell className="text-sm text-gray-500">{doc.uploadedAt}</TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {doc.tags.map((tag, index) => (
-                          <Badge key={index} variant="outline" className="text-xs bg-gray-50 text-gray-600 border-gray-200">
-                            {tag}
-                          </Badge>
-                        ))}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0 shrink-0">
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem>
-                            <Download className="h-4 w-4 mr-2 cursor-pointer" />
-                            Tải xuống
-                          </DropdownMenuItem>
-                          <DropdownMenuItem>
-                            <Share2 className="h-4 w-4 mr-2 cursor-pointer" />
-                            Chia sẻ
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem className="text-red-600">
-                            <Trash2 className="h-4 w-4 mr-2 cursor-pointer" />
-                            Xóa
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
+          {viewMode === 'grid' ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              {currentDocuments.map((doc) => (
+                <DocumentCard
+                  key={doc.id}
+                  doc={doc}
+                  getFileIcon={getFileIcon}
+                  getStatusBadge={getStatusBadge}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="overflow-x-auto border-gray-200">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[40%]">Tài liệu</TableHead>
+                    <TableHead>Trạng thái</TableHead>
+                    <TableHead>Người tải lên</TableHead>
+                    <TableHead>Thời gian</TableHead>
+                    <TableHead>Tags</TableHead>
+                    <TableHead></TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        )}
+                  </TableHeader>
+                <TableBody>
+                  {currentDocuments.map((doc) => (
+                    <DocumentTableRow
+                      key={doc.id}
+                      doc={doc}
+                      getFileIcon={getFileIcon}
+                      getStatusBadge={getStatusBadge}
+                    />
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+
 
         {/* Pagination */}
         {totalPages > 1 && (
