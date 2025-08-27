@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Search, 
   Filter, 
@@ -18,7 +18,8 @@ import {
   Star,
   Clock,
   User,
-  Home
+  Home,
+  FileVideo
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -39,89 +40,94 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
-// Mock data
-const mockDocuments = [
+const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+
+interface DocumentItem {
+  id: string;
+  name: string;
+  type: string;
+  size: string;
+  uploadedBy: string;
+  uploadedAt: string;
+  status: StatusType;
+  tags: string[];
+  starred: boolean;
+}
+
+const mockDocuments: DocumentItem[] = [
   {
     id: '1',
-    name: 'Quy trình vận hành máy nghiền',
+    name: 'Báo cáo tài chính Q1',
     type: 'PDF',
-    size: '2.4 MB',
-    uploadedBy: 'Admin',
-    uploadedAt: '2 giờ trước',
+    size: '1.2 MB',
+    uploadedBy: 'Nguyen Van A',
+    uploadedAt: '27/08/2025, 10:30:00',
     status: 'Đã xử lý',
-    tags: ['Quy trình', 'Vận hành'],
-    starred: false
+    tags: ['tài chính', 'Q1', '2025'],
+    starred: true,
   },
   {
     id: '2',
-    name: 'Báo cáo sản xuất tháng 3',
+    name: 'Danh sách nhân sự',
     type: 'XLSX',
-    size: '1.8 MB',
-    uploadedBy: 'Manager',
-    uploadedAt: '1 ngày trước',
+    size: '540 KB',
+    uploadedBy: 'Tran Thi B',
+    uploadedAt: '26/08/2025, 14:20:00',
     status: 'Đang xử lý',
-    tags: ['Báo cáo', 'Sản xuất'],
-    starred: true
+    tags: ['nhân sự', 'bảng lương'],
+    starred: false,
   },
   {
     id: '3',
-    name: 'Sơ đồ quy trình sản xuất',
-    type: 'JPG',
-    size: '856 KB',
-    uploadedBy: 'Designer',
-    uploadedAt: '3 ngày trước',
+    name: 'Hướng dẫn sử dụng hệ thống',
+    type: 'DOCX',
+    size: '860 KB',
+    uploadedBy: 'Le Van C',
+    uploadedAt: '25/08/2025, 09:15:00',
     status: 'Hoàn thành',
-    tags: ['Sơ đồ', 'Hình ảnh'],
-    starred: false
+    tags: ['hướng dẫn', 'manual'],
+    starred: false,
   },
   {
     id: '4',
-    name: 'Hướng dẫn an toàn lao động',
-    type: 'PDF',
-    size: '3.2 MB',
-    uploadedBy: 'Admin',
-    uploadedAt: '1 tuần trước',
-    status: 'Đã xử lý',
-    tags: ['An toàn', 'Hướng dẫn'],
-    starred: true
+    name: 'Biểu đồ doanh thu',
+    type: 'JPG',
+    size: '320 KB',
+    uploadedBy: 'Nguyen Van D',
+    uploadedAt: '24/08/2025, 17:45:00',
+    status: 'Lỗi',
+    tags: ['doanh thu', 'biểu đồ'],
+    starred: true,
   },
-  {
-    id: '5',
-    name: 'Danh sách thiết bị',
-    type: 'XLSX',
-    size: '945 KB',
-    uploadedBy: 'Supervisor',
-    uploadedAt: '2 tuần trước',
-    status: 'Đã xử lý',
-    tags: ['Thiết bị', 'Danh sách'],
-    starred: false
-  },
-  {
-    id: '6',
-    name: 'Quy định nội bộ',
-    type: 'DOCX',
-    size: '1.5 MB',
-    uploadedBy: 'HR',
-    uploadedAt: '3 tuần trước',
-    status: 'Đã xử lý',
-    tags: ['Quy định', 'Nội bộ'],
-    starred: false
-  }
 ];
 
-const getFileIcon = (type: string) => {
-  switch (type) {
-    case 'PDF': return <FileText className="h-8 w-8 text-red-500" />;
-    case 'XLSX': 
-    case 'XLS': return <FileSpreadsheet className="h-8 w-8 text-green-500" />;
-    case 'DOCX':
-    case 'DOC': return <FileText className="h-8 w-8 text-blue-500" />;
-    case 'JPG':
-    case 'PNG': return <FileImage className="h-8 w-8 text-purple-500" />;
-    case 'TXT': return <FileCode className="h-8 w-8 text-gray-500" />;
-    default: return <File className="h-8 w-8 text-gray-400" />;
-  }
+
+const formatFileSize = (bytes: number) => {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 };
+
+const getFileIcon =(type: string) => {
+  if(type == "DOCX"){
+    return <FileText className='text-blue-500'/>
+  }
+  else if(type == "XLSX"){
+    return <FileSpreadsheet className='text-green-500'/>
+  }
+  else if(type == "JPG" || type == "JPEG" || type == "PNG"){
+    return <FileImage className='text-red-500'/>
+  }
+  else if(type == "MP4" || type == "AVI" || type == "MOV"){
+    return <FileVideo className='text-purple-500'/>
+  }
+  else{
+    return <File/>
+  }
+}
+
 
 interface StatusConfig {
   color: string;
@@ -154,8 +160,35 @@ export default function DocumentManagement() {
   const [sortBy, setSortBy] = useState('newest');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(12);
+  const [documents, setDocuments] = useState<DocumentItem[]>([]);
 
-  const filteredDocuments = mockDocuments.filter(doc => {
+  const fetchDocuments = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/documents`);
+      const data = await res.json();
+      const docs: DocumentItem[] = (data.documents || []).map((d: any) => ({
+        id: d.id,
+        name: d.title,
+        type: (d.metadata?.file_path?.split('.').pop() || '').toUpperCase(),
+        size: formatFileSize(d.metadata?.file_size || 0),
+        uploadedBy: d.metadata?.uploaded_by || 'Unknown',
+        uploadedAt: d.created_at ? new Date(d.created_at).toLocaleString() : '',
+        status: (d.metadata?.status || 'Đã xử lý') as StatusType,
+        tags: d.metadata?.tags || [],
+        starred: false
+      }));
+      setDocuments(docs);
+    } catch (error) {
+      console.error('Failed to fetch documents:', error);
+    }
+  };
+
+  useEffect(() => {
+    // fetchDocuments();
+    setDocuments(mockDocuments);
+  }, []);
+
+  const filteredDocuments = documents.filter(doc => {
     const matchesSearch = doc.name.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesType = filterType === 'all' || doc.type === filterType;
     const matchesStatus = filterStatus === 'all' || doc.status === filterStatus;
@@ -188,11 +221,11 @@ export default function DocumentManagement() {
               <p className="text-gray-600 mt-1">Quản lý và tìm kiếm tài liệu một cách hiệu quả</p>
             </div>
             <div className="flex items-center gap-2">
-              <Button variant="outline" className="flex items-center gap-2">
+              <Button variant="outline" className="flex items-center gap-2 cursor-pointer hover:bg-zinc-200">
                 <FolderPlus className="h-4 w-4" />
-                Tải lên tài liệu
+                Tạo folder
               </Button>
-              <Button className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700">
+              <Button className="flex items-center gap-2 text-white bg-blue-600 hover:bg-blue-700 cursor-pointer">
                 <Upload className="h-4 w-4" />
                 Tải lên tài liệu
               </Button>

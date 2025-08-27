@@ -17,7 +17,6 @@ import {
 } from "lucide-react"
 import { Link, useLocation } from "react-router-dom"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { useAuth } from "@/context/AuthContext"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -101,7 +100,7 @@ const bottomItems = [
 
 export function Sidebar() {
   const location = useLocation()
-  const { user, signOut } = useAuth()
+  const user = { email: "user@example.com" }
   const [expanded, setExpanded] = useState(true)
   const [expandedItems, setExpandedItems] = useState<Record<string | number, boolean>>({})
 
@@ -329,7 +328,7 @@ export function Sidebar() {
             <DropdownMenuItem>Profile</DropdownMenuItem>
             <DropdownMenuItem>Settings</DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => signOut()}>
+            <DropdownMenuItem >
               Logout
             </DropdownMenuItem>
           </DropdownMenuContent>

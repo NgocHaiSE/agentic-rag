@@ -25,6 +25,8 @@ import {
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Badge } from '@/components/ui/badge';
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+
 const categories = [
   'Báo cáo',
   'Quy trình', 
@@ -104,16 +106,23 @@ export default function DocumentUploadPage() {
     }
   };
 
-  const handleSubmit = () => {
-    // Handle form submission
-    console.log({
-      title,
-      description,
-      category,
-      tags: tagList,
-      accessLevel,
-      files: selectedFiles
+  const handleSubmit = async () => {
+    if (selectedFiles.length === 0) return;
+
+    const formData = new FormData();
+    selectedFiles.forEach(f => {
+      formData.append('files', f.file);
     });
+
+    try {
+      await fetch(`${API_BASE_URL}/documents/upload`, {
+        method: 'POST',
+        body: formData
+      });
+      handleReset();
+    } catch (error) {
+      console.error('Upload failed:', error);
+    }
   };
 
   const handleReset = () => {

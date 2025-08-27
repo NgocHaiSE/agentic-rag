@@ -3,7 +3,7 @@ import ChatHeader from './components/ChatHeader'
 import MessageList from './components/MessageList'
 import ChatInput from './components/ChatInput'
 import ErrorBanner from './components/ErrorBanner'
-import { ThinkingIndicator } from './components/ResponseParser'
+// import { ThinkingIndicator } from './components/ResponseParser'
 import type { Message, ToolCall } from './types'
 import { sendChatStream, sendChat } from './lib/api'
 
