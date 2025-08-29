@@ -50,17 +50,6 @@ export default function ChatInput({ onSend, disabled, isStreaming = false, onSto
     }
   }, [isStreaming])
 
-  const quickPrompts = [
-    "Chiến lược AI của Google",
-    "Partnership Microsoft-OpenAI"
-  ]
-
-  const handleQuickPrompt = (prompt: string) => {
-    setText(prompt)
-    setIsExpanded(true)
-    textareaRef.current?.focus()
-  }
-
   return (
     <div className="sticky bottom-0 z-10 bg-white/90 backdrop-blur-xl border-t border-slate-200/50 shadow-lg">
       <div className="max-w-6xl mx-auto p-4 space-y-4">
@@ -112,7 +101,7 @@ export default function ChatInput({ onSend, disabled, isStreaming = false, onSto
                   placeholder={
                     isStreaming 
                       ? "Đang chờ phản hồi... Nhấn ESC để dừng"
-                      : "Hỏi tôi về AI, công nghệ, hoặc phân tích doanh nghiệp..."
+                      : "Hỏi tôi điều gì đó..."
                   }
                   disabled={disabled || isStreaming}
                   rows={isExpanded ? 3 : 1}

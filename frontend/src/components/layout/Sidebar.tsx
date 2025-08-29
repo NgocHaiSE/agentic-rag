@@ -15,7 +15,7 @@ import {
   Upload,
   FolderOpen,
 } from "lucide-react"
-import { Link, useLocation } from "react-router-dom"
+import { Link, useLocation, useNavigate } from "react-router-dom"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
   DropdownMenu,
@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { useState } from "react"
 import type { MouseEvent as ReactMouseEvent } from "react"
+import { useAuth } from "@/context/AuthContext"
 
 // Custom CSS for animations
 const customStyles = `
@@ -89,7 +90,10 @@ const sidebarItems = [
       { name: "Tài liệu chính", icon: Terminal, path: "/documents" }
     ]
   },
-  { name: "Tri thức", icon: Brain, path: "/knowledge", subitems: [] },
+  { name: "Admin", icon: Brain, path: "/admin", 
+    subitems: [
+      { name: "Tài liệu", icon: FolderOpen, path: "/admin/documents"}
+    ] },
 ]
 
 const bottomItems = [
@@ -100,14 +104,19 @@ const bottomItems = [
 
 export function Sidebar() {
   const location = useLocation()
-  const user = { email: "user@example.com" }
+  const navigate = useNavigate()
+  const { user, signOut } = useAuth()
   const [expanded, setExpanded] = useState(true)
   const [expandedItems, setExpandedItems] = useState<Record<string | number, boolean>>({})
+  const visibleSidebarItems = (user?.role === 'admin')
+    ? sidebarItems
+    : sidebarItems.filter((i) => i.name !== 'Admin')
 
   // Get user initials for avatar
   const getUserInitials = () => {
-    if (!user?.email) return "U"
-    return user.email.charAt(0).toUpperCase()
+    if (!user?.fullName && !user?.username) return "U"
+    const src = user.fullName || user.username
+    return src.charAt(0).toUpperCase()
   }
 
   const toggleSubmenu = (itemName: string | number, event: ReactMouseEvent<HTMLButtonElement>) => {
@@ -229,7 +238,7 @@ export function Sidebar() {
       {/* Main Navigation */}
       <div className="flex-1 overflow-auto py-4">
         <div className={cn("space-y-1", expanded ? "px-3" : "px-2")}>
-          {sidebarItems.map((item) => (
+          {(user ? visibleSidebarItems : [{ name: "Đăng nhập", icon: BookOpen, path: "/login", subitems: [] }]).map((item) => (
             <div key={item.name}>
               {/* Main Item */}
               {renderMainItem(item)}
@@ -302,37 +311,41 @@ export function Sidebar() {
 
       {/* User Section */}
       <div className={cn("pt-3 border-t border-gray-200 mt-2", expanded ? "px-3" : "px-2")}>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              className={cn(
-                "w-full hover:bg-gray-100 px-2 transition-all duration-200",
-                expanded ? "justify-start" : "justify-center"
-              )}
-            >
-              <Avatar className="h-8 w-8 bg-blue-100 text-blue-600 shrink-0">
-                <AvatarFallback>{getUserInitials()}</AvatarFallback>
-              </Avatar>
-              {expanded && (
-                <div className="flex flex-col items-start text-sm ml-2">
-                  <span className="font-medium">{user?.email ? user.email.split('@')[0] : 'User'}</span>
-                  <span className="text-xs text-gray-500">{user?.email || 'user@example.com'}</span>
-                </div>
-              )}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuLabel>My Account</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem>Profile</DropdownMenuItem>
-            <DropdownMenuItem>Settings</DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem >
-              Logout
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {user ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                className={cn(
+                  "w-full hover:bg-gray-100 px-2 transition-all duration-200",
+                  expanded ? "justify-start" : "justify-center"
+                )}
+              >
+                <Avatar className="h-8 w-8 bg-blue-100 text-blue-600 shrink-0">
+                  <AvatarFallback>{getUserInitials()}</AvatarFallback>
+                </Avatar>
+                {expanded && (
+                  <div className="flex flex-col items-start text-sm ml-2">
+                    <span className="font-medium">{user.fullName || user.username}</span>
+                    <span className="text-xs text-gray-500">{user.department} • {user.role}</span>
+                  </div>
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56 bg-zinc-50">
+              <DropdownMenuLabel>Tài khoản</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem disabled>{user.title} - {user.domain}</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => navigate('/settings')}>Cài đặt</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => { signOut(); navigate('/login') }}>Đăng xuất</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : (
+          <Button variant="ghost" className="w-full" onClick={() => navigate('/login')}>
+            {expanded ? 'Đăng nhập' : <BookOpen className="h-5 w-5" />}
+          </Button>
+        )}
       </div>
     </div>
   )
