@@ -8,7 +8,7 @@ import logging
 import json
 import glob
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Sequence
 from datetime import datetime
 import argparse
 
@@ -340,22 +340,43 @@ class DocumentIngestionPipeline:
         source: str,
         content: str,
         chunks: List[DocumentChunk],
-        metadata: Dict[str, Any]
+        metadata: Dict[str, Any],
+        extra_fields: Optional[Dict[str, Any]] = None,
     ) -> str:
         """Save document and chunks to PostgreSQL."""
         async with db_pool.acquire() as conn:
             async with conn.transaction():
-                # Insert document
+                extra = extra_fields or {}
+                # Allow UI to override extracted title if provided
+                title_to_use = extra.get("title_override") or title
+
+                # Required FKs (validated at API level)
+                doc_type_id = extra.get("document_type_id")
+                issuing_unit_id = extra.get("issuing_unit_id")
+                site_id = extra.get("site_id")
+
+                author = extra.get("author")
+                effective_date = extra.get("effective_date")  # Expect ISO date string or None
+
+                # Insert document with new mandatory fields
                 document_result = await conn.fetchrow(
                     """
-                    INSERT INTO documents (title, source, content, metadata)
-                    VALUES ($1, $2, $3, $4)
+                    INSERT INTO documents (
+                        title, source, content, metadata,
+                        document_type_id, issuing_unit_id, site_id, author, effective_date
+                    )
+                    VALUES ($1, $2, $3, $4, $5::uuid, $6::uuid, $7::uuid, $8, $9::date)
                     RETURNING id::text
                     """,
-                    title,
+                    title_to_use,
                     source,
                     content,
-                    json.dumps(metadata)
+                    json.dumps(metadata),
+                    doc_type_id,
+                    issuing_unit_id,
+                    site_id,
+                    author,
+                    effective_date,
                 )
                 
                 document_id = document_result["id"]
@@ -380,7 +401,35 @@ class DocumentIngestionPipeline:
                         json.dumps(chunk.metadata),
                         chunk.token_count
                     )
-                
+                # Insert equipment and keyword tag relations if provided
+                equipment_ids: Sequence[str] = extra.get("equipment_ids") or []
+                keyword_ids: Sequence[str] = extra.get("keyword_ids") or []
+
+                if equipment_ids:
+                    # Deduplicate while preserving order
+                    seen = set()
+                    equipment_ids = [e for e in equipment_ids if not (e in seen or seen.add(e))]
+                    await conn.executemany(
+                        """
+                        INSERT INTO document_equipment (document_id, equipment_id)
+                        VALUES ($1::uuid, $2::uuid)
+                        ON CONFLICT DO NOTHING
+                        """,
+                        [(document_id, eid) for eid in equipment_ids]
+                    )
+
+                if keyword_ids:
+                    seenk = set()
+                    keyword_ids = [k for k in keyword_ids if not (k in seenk or seenk.add(k))]
+                    await conn.executemany(
+                        """
+                        INSERT INTO document_keywords (document_id, keyword_id)
+                        VALUES ($1::uuid, $2::uuid)
+                        ON CONFLICT DO NOTHING
+                        """,
+                        [(document_id, kid) for kid in keyword_ids]
+                    )
+
                 return document_id
     
     async def _clean_databases(self):
@@ -401,6 +450,94 @@ class DocumentIngestionPipeline:
         await self.graph_builder.clear_graph()
         logger.info("Cleaned knowledge graph")
 
+
+async def ingest_file(
+    file_path: str,
+    config: Optional[IngestionConfig] = None,
+    extra_fields: Optional[Dict[str, Any]] = None,
+) -> IngestionResult:
+    """Ingest a single document file.
+
+    This helper spins up a temporary :class:`DocumentIngestionPipeline`, processes
+    the provided file and then closes all connections. It allows other modules
+    (e.g. API endpoints) to ingest documents on demand when they are uploaded.
+
+    Args:
+        file_path: Path to the file on disk.
+        config: Optional ingestion configuration.
+
+    Returns:
+        IngestionResult describing the ingestion outcome.
+    """
+    cfg = config or IngestionConfig()
+    pipeline = DocumentIngestionPipeline(cfg, documents_folder=os.path.dirname(file_path))
+    await pipeline.initialize()
+    try:
+        # We need to inject extra_fields into the save step. Easiest is to
+        # temporarily monkey-patch the _save_to_postgres call by wrapping it.
+        # However, we can instead replicate the steps here to pass extra.
+        # Reuse the private method by calling the individual pipeline steps.
+        from pathlib import Path as _P
+        content = pipeline._read_document(file_path)
+        title = pipeline._extract_title(content, file_path)
+        source = os.path.relpath(file_path, pipeline.documents_folder)
+        metadata = pipeline._extract_document_metadata(content, file_path)
+
+        chunks = await pipeline.chunker.chunk_document(
+            content=content,
+            title=title,
+            source=source,
+            metadata=metadata
+        )
+        if pipeline.config.extract_entities:
+            chunks = await pipeline.graph_builder.extract_entities_from_chunks(chunks)
+        embedded_chunks = await pipeline.embedder.embed_chunks(chunks)
+        # Merge optional UI-provided metadata fields
+        if extra_fields:
+            if extra_fields.get("description"):
+                metadata["description"] = extra_fields["description"]
+            if extra_fields.get("access_level"):
+                metadata["access_level"] = extra_fields["access_level"]
+
+        doc_id = await pipeline._save_to_postgres(
+            title=title,
+            source=source,
+            content=content,
+            chunks=embedded_chunks,
+            metadata=metadata,
+            extra_fields=extra_fields,
+        )
+        # Optionally build graph if not skipped
+        relationships_created = 0
+        graph_errors = []
+        if not pipeline.config.skip_graph_building:
+            try:
+                graph_result = await pipeline.graph_builder.add_document_to_graph(
+                    chunks=embedded_chunks,
+                    document_title=title,
+                    document_source=source,
+                    document_metadata=metadata
+                )
+                relationships_created = graph_result.get("episodes_created", 0)
+                graph_errors = graph_result.get("errors", [])
+            except Exception as e:
+                graph_errors = [f"Failed to add to knowledge graph: {e}"]
+
+        from datetime import datetime as _dt
+        processing_time = 0.0
+        # Return IngestionResult structure similar to pipeline._ingest_single_document
+        result = IngestionResult(
+            document_id=doc_id,
+            title=title,
+            chunks_created=len(chunks),
+            entities_extracted=0,  # not tracked here precisely
+            relationships_created=relationships_created,
+            processing_time_ms=processing_time,
+            errors=graph_errors,
+        )
+    finally:
+        await pipeline.close()
+    return result
 
 async def main():
     """Main function for running ingestion."""

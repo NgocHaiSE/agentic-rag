@@ -11,7 +11,7 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 import uuid
 
-from fastapi import FastAPI, HTTPException, Request, Depends
+from fastapi import FastAPI, HTTPException, Request, Depends, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
@@ -26,7 +26,12 @@ from .db_utils import (
     get_session,
     add_message,
     get_session_messages,
-    test_connection
+    test_connection,
+    get_account_by_username,
+    verify_password,
+    touch_last_login,
+    create_default_accounts_if_missing,
+    db_pool,
 )
 from .graph_utils import initialize_graph, close_graph, test_graph_connection
 from .models import (
@@ -37,7 +42,8 @@ from .models import (
     StreamDelta,
     ErrorResponse,
     HealthStatus,
-    ToolCall
+    ToolCall,
+    IngestionConfig
 )
 from .tools import (
     vector_search_tool,
@@ -49,6 +55,8 @@ from .tools import (
     HybridSearchInput,
     DocumentListInput
 )
+
+from ingestion.ingest import ingest_file
 
 # Load environment variables
 load_dotenv()
@@ -96,6 +104,12 @@ async def lifespan(app: FastAPI):
         if not graph_ok:
             logger.error("Graph database connection failed")
         
+        # Seed default accounts if accounts table exists
+        try:
+            await create_default_accounts_if_missing()
+        except Exception as e:
+            logger.warning(f"Account seeding skipped: {e}")
+
         logger.info("Agentic RAG API startup complete")
         
     except Exception as e:
@@ -133,6 +147,27 @@ app.add_middleware(
 )
 
 app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+
+# Auth models
+from pydantic import BaseModel
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+class AccountOut(BaseModel):
+    id: str
+    username: str
+    full_name: str
+    department: str | None = None
+    domain: str | None = None
+    title: str | None = None
+    role: str
+
+class LoginResponse(BaseModel):
+    user: AccountOut
+    session_id: str
 
 
 # Helper functions for agent execution
@@ -411,6 +446,34 @@ async def chat(request: ChatRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/auth/login", response_model=LoginResponse)
+async def auth_login(payload: LoginRequest):
+    try:
+        account = await get_account_by_username(payload.username)
+        if not account or not account.get("is_active", True):
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+        if not verify_password(payload.password, account.get("password_hash", "")):
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+
+        await touch_last_login(account["id"])
+        session_id = await create_session(user_id=account["id"], metadata={"username": account["username"], "role": account["role"]})
+        user_out = AccountOut(
+            id=account["id"],
+            username=account["username"],
+            full_name=account.get("full_name") or account.get("name") or account["username"],
+            department=account.get("department"),
+            domain=account.get("domain"),
+            title=account.get("title"),
+            role=account.get("role", "user"),
+        )
+        return LoginResponse(user=user_out, session_id=session_id)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Login failed: {e}")
+        raise HTTPException(status_code=500, detail="Internal error")
+
+
 @app.post("/chat/stream")
 async def chat_stream(request: ChatRequest):
     """Streaming chat endpoint using Server-Sent Events."""
@@ -621,6 +684,146 @@ async def list_documents_endpoint(
         
     except Exception as e:
         logger.error(f"Document listing failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/documents/upload")
+async def upload_documents(
+    files: List[UploadFile] = File(...),
+    document_type_id: str = Form(...),
+    issuing_unit_id: str = Form(...),
+    site_id: str = Form(...),
+    author: Optional[str] = Form(None),
+    effective_date: Optional[str] = Form(None),  # YYYY-MM-DD
+    equipment_ids: Optional[str] = Form(None),   # CSV of UUIDs
+    keyword_ids: Optional[str] = Form(None),     # CSV of UUIDs
+    title_override: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
+    access_level: Optional[str] = Form(None),
+):
+    """Upload one or more documents and ingest them with metadata.
+
+    Notes:
+    - equipment_ids, keyword_ids accepted as comma-separated UUID strings.
+    - title_override allows forcing the document title.
+    """
+    documents_folder = os.getenv("DOCUMENTS_FOLDER", "documents")
+    os.makedirs(documents_folder, exist_ok=True)
+    results = []
+    try:
+        # Parse CSV lists
+        def _parse_csv_ids(val: Optional[str]) -> List[str]:
+            if not val:
+                return []
+            return [v.strip() for v in val.split(",") if v.strip()]
+
+        extra_fields = {
+            "document_type_id": document_type_id,
+            "issuing_unit_id": issuing_unit_id,
+            "site_id": site_id,
+            "author": author,
+            "effective_date": effective_date,
+            "equipment_ids": _parse_csv_ids(equipment_ids),
+            "keyword_ids": _parse_csv_ids(keyword_ids),
+            "title_override": title_override,
+            "description": description,
+            "access_level": access_level,
+        }
+
+        for upload in files:
+            file_path = os.path.join(documents_folder, upload.filename)
+            with open(file_path, "wb") as f:
+                f.write(await upload.read())
+            ingestion_result = await ingest_file(file_path, IngestionConfig(), extra_fields=extra_fields)
+            results.append(ingestion_result.model_dump())
+        return {"documents": results}
+    except Exception as e:
+        logger.error(f"Upload failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/metadata/document-types")
+async def list_document_types():
+    try:
+        async with db_pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT id::text, COALESCE(code, '') as code, name, description, is_active
+                FROM document_types
+                WHERE is_active = true
+                ORDER BY name
+                """
+            )
+            return [dict(r) for r in rows]
+    except Exception as e:
+        logger.error(f"list_document_types failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/metadata/org-units")
+async def list_org_units():
+    try:
+        async with db_pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT id::text, name, parent_id::text as parent_id, is_active
+                FROM org_units
+                WHERE is_active = true
+                ORDER BY name
+                """
+            )
+            return [dict(r) for r in rows]
+    except Exception as e:
+        logger.error(f"list_org_units failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/metadata/sites")
+async def list_sites():
+    try:
+        async with db_pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT id::text, name, COALESCE(kind,'') as kind, is_active
+                FROM sites
+                WHERE is_active = true
+                ORDER BY name
+                """
+            )
+            return [dict(r) for r in rows]
+    except Exception as e:
+        logger.error(f"list_sites failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/metadata/equipment")
+async def list_equipment():
+    try:
+        async with db_pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT id::text, COALESCE(code,'') as code, name, is_active
+                FROM equipment
+                WHERE is_active = true
+                ORDER BY COALESCE(code, name)
+                """
+            )
+            return [dict(r) for r in rows]
+    except Exception as e:
+        logger.error(f"list_equipment failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/metadata/keywords")
+async def list_keywords():
+    try:
+        async with db_pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT id::text, name, is_active
+                FROM keywords
+                WHERE is_active = true
+                ORDER BY name
+                """
+            )
+            return [dict(r) for r in rows]
+    except Exception as e:
+        logger.error(f"list_keywords failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

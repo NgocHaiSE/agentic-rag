@@ -34,4 +34,43 @@ export interface DocumentItem {
   uploadedAt: string;
   status: StatusType;
   tags: string[];
+  issuingUnitId?: string;
+  issuingUnitName?: string;
+}
+
+// Detailed document payload returned by GET /documents/{id}
+export interface DocumentDetail {
+  id: string;
+  title: string;
+  source?: string | null;
+  content?: string | null;
+  metadata?: Record<string, any>;
+  created_at?: string;
+  updated_at?: string;
+}
+
+// Ingestion management
+export type IngestStatus = 'processing' | 'success' | 'failed' | 'pending';
+
+export interface IngestJob {
+  id: string;
+  title: string;
+  status: IngestStatus;
+  progress?: number; // 0-100 if available
+  chunksInserted?: number;
+  chunksTotal?: number;
+  uploadedBy?: string;
+  orgUnit?: string;
+  site?: string;
+  documentType?: string;
+  fileName?: string;
+  fileSize?: number;
+  accessLevel?: string;
+  effectiveDate?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  chunksCreated?: number;
+  relationshipsCreated?: number;
+  errors?: string[];
+  raw?: any; // original API record for debugging/details
 }

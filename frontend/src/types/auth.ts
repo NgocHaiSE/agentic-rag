@@ -1,6 +1,7 @@
 export type Role = 'admin' | 'manager' | 'user'
 
 export interface Account {
+  id?: string
   username: string
   password?: string
   fullName: string
@@ -13,4 +14,3 @@ export interface Account {
 export interface AuthState {
   user: Account | null
 }
-

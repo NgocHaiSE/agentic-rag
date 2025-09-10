@@ -6,7 +6,14 @@ DROP TABLE IF EXISTS messages CASCADE;
 DROP TABLE IF EXISTS sessions CASCADE;
 DROP TABLE IF EXISTS users;
 DROP TABLE IF EXISTS chunks CASCADE;
+DROP TABLE IF EXISTS document_keywords CASCADE;
+DROP TABLE IF EXISTS document_equipment CASCADE;
 DROP TABLE IF EXISTS documents CASCADE;
+DROP TABLE IF EXISTS keywords CASCADE;
+DROP TABLE IF EXISTS equipment CASCADE;
+DROP TABLE IF EXISTS sites CASCADE;
+DROP TABLE IF EXISTS org_units CASCADE;
+DROP TABLE IF EXISTS document_types CASCADE;
 DROP INDEX IF EXISTS idx_chunks_embedding;
 DROP INDEX IF EXISTS idx_chunks_document_id;
 DROP INDEX IF EXISTS idx_documents_metadata;
@@ -30,11 +37,77 @@ CREATE INDEX idx_users_created_at ON users (created_at DESC);
 CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+CREATE TABLE document_types (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    code TEXT,
+    name TEXT NOT NULL,
+    description TEXT,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    -- UNIQUE (name),
+    UNIQUE NULLS NOT DISTINCT (code)
+);
+
+CREATE INDEX idx_document_types_active ON document_types (is_active);
+
+CREATE TABLE org_units (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name TEXT NOT NULL,
+    parent_id UUID REFERENCES org_units(id) ON DELETE SET NULL,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_org_units_parent ON org_units (parent_id);
+CREATE INDEX idx_org_units_active ON org_units (is_active);
+
+CREATE TABLE sites (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name TEXT NOT NULL,
+    kind TEXT,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (name)
+);
+
+CREATE INDEX idx_sites_active ON sites (is_active);
+
+CREATE TABLE equipment (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    code TEXT,
+    name TEXT NOT NULL,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE NULLS NOT DISTINCT (code)
+);
+
+CREATE INDEX idx_equipment_active ON equipment (is_active);
+
+CREATE TABLE keywords (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name TEXT NOT NULL,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (name)
+);
+
+CREATE INDEX idx_keywords_active ON keywords (is_active);
+
 CREATE TABLE documents (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     title TEXT NOT NULL,
     source TEXT NOT NULL,
     content TEXT NOT NULL,
+    document_type_id UUID NOT NULL REFERENCES document_types(id),
+    issuing_unit_id UUID NOT NULL REFERENCES org_units(id),
+    site_id UUID NOT NULL REFERENCES sites(id),
+    author TEXT,
+    effective_date DATE,
     metadata JSONB DEFAULT '{}',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -42,6 +115,25 @@ CREATE TABLE documents (
 
 CREATE INDEX idx_documents_metadata ON documents USING GIN (metadata);
 CREATE INDEX idx_documents_created_at ON documents (created_at DESC);
+CREATE INDEX idx_documents_doc_type ON documents (document_type_id);
+CREATE INDEX idx_documents_issuing_unit ON documents (issuing_unit_id);
+CREATE INDEX idx_documents_site ON documents (site_id);
+
+CREATE TABLE document_equipment (
+    document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    equipment_id UUID NOT NULL REFERENCES equipment(id) ON DELETE RESTRICT,
+    PRIMARY KEY (document_id, equipment_id)
+);
+
+CREATE INDEX idx_doc_equipment_equipment ON document_equipment (equipment_id);
+
+CREATE TABLE document_keywords (
+    document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    keyword_id UUID NOT NULL REFERENCES keywords(id) ON DELETE RESTRICT,
+    PRIMARY KEY (document_id, keyword_id)
+);
+
+CREATE INDEX idx_doc_keywords_keyword ON document_keywords (keyword_id);
 
 CREATE TABLE chunks (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -215,11 +307,30 @@ CREATE TRIGGER update_documents_updated_at BEFORE UPDATE ON documents
 CREATE TRIGGER update_sessions_updated_at BEFORE UPDATE ON sessions
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+CREATE TRIGGER update_document_types_updated_at BEFORE UPDATE ON document_types
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_org_units_updated_at BEFORE UPDATE ON org_units
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_sites_updated_at BEFORE UPDATE ON sites
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_equipment_updated_at BEFORE UPDATE ON equipment
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_keywords_updated_at BEFORE UPDATE ON keywords
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
 CREATE OR REPLACE VIEW document_summaries AS
 SELECT 
     d.id,
     d.title,
     d.source,
+    d.document_type_id,
+    dt.name AS document_type_name,
+    d.issuing_unit_id,
+    ou.name AS issuing_unit_name,
+    d.site_id,
+    s.name AS site_name,
+    d.author,
+    d.effective_date,
     d.created_at,
     d.updated_at,
     d.metadata,
@@ -227,5 +338,8 @@ SELECT
     AVG(c.token_count) AS avg_tokens_per_chunk,
     SUM(c.token_count) AS total_tokens
 FROM documents d
+LEFT JOIN document_types dt ON d.document_type_id = dt.id
+LEFT JOIN org_units ou ON d.issuing_unit_id = ou.id
+LEFT JOIN sites s ON d.site_id = s.id
 LEFT JOIN chunks c ON d.id = c.document_id
-GROUP BY d.id, d.title, d.source, d.created_at, d.updated_at, d.metadata;
+GROUP BY d.id, d.title, d.source, d.document_type_id, dt.name, d.issuing_unit_id, ou.name, d.site_id, s.name, d.author, d.effective_date, d.created_at, d.updated_at, d.metadata;

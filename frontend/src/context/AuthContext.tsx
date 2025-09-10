@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import type { Account, Role } from '@/types/auth'
 import { API_BASE_URL } from '@/lib/api'
+import { USERS } from '@/data/users'
 
 type SignInResult = { ok: true } | { ok: false; error: string }
 
@@ -37,6 +38,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user])
 
   const signIn = async (username: string, password: string): Promise<SignInResult> => {
+    const useMock = (import.meta as any).env?.VITE_AUTH_MOCK === '1' || (import.meta as any).env?.VITE_AUTH_MODE === 'mock'
+
+    const doMock = (): SignInResult => {
+      const found = USERS.find(u => u.username === username && u.password === password)
+      if (!found) return { ok: false, error: 'Sai tài khoản hoặc mật khẩu' }
+      const mapped: Account = {
+        username: found.username,
+        fullName: found.fullName,
+        department: found.department,
+        domain: found.domain,
+        title: found.title,
+        role: found.role,
+      }
+      setUser(mapped)
+      try { localStorage.setItem('auth:session_id', `mock-${Date.now()}`) } catch {}
+      return { ok: true }
+    }
+
+    if (useMock) return doMock()
+
     try {
       const res = await fetch(`${API_BASE_URL}/auth/login`, {
         method: 'POST',
@@ -44,12 +65,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         body: JSON.stringify({ username, password })
       })
       if (!res.ok) {
+        // If server is unreachable or returns error, attempt mock fallback
+        try { return doMock() } catch {}
         const msg = await res.text()
         return { ok: false, error: msg || 'Đăng nhập thất bại' }
       }
       const data = await res.json()
       const u = data.user
-      const mapped = {
+      const mapped: Account = {
+        id: u.id,
         username: u.username,
         fullName: u.full_name || u.username,
         department: u.department || '',
@@ -58,10 +82,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         role: u.role as Role,
       }
       setUser(mapped)
-      // Optionally persist session_id if needed for later API calls
-      localStorage.setItem('auth:session_id', data.session_id)
+      try { localStorage.setItem('auth:session_id', data.session_id) } catch {}
       return { ok: true }
     } catch {
+      // Network failure -> mock fallback
+      const res = doMock()
+      if (res.ok) return res
       return { ok: false, error: 'Không thể kết nối tới máy chủ' }
     }
   }

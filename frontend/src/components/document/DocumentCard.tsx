@@ -9,17 +9,21 @@ interface DocumentCardProps {
   doc: DocumentItem;
   getFileIcon: (type: string) => React.ReactNode;
   getStatusBadge: (status: StatusType) => React.ReactNode;
+  onClick?: () => void;
 }
 
-export function DocumentCard({ doc, getFileIcon, getStatusBadge }: DocumentCardProps) {
+export function DocumentCard({ doc, getFileIcon, getStatusBadge, onClick }: DocumentCardProps) {
   return (
-    <Card className="group hover:shadow-lg transition-all duration-200 border border-gray-200 bg-white cursor-pointer">
+   <Card 
+      onClick={onClick} 
+      className="group hover:shadow-md transition-shadow duration-200 border border-gray-200 bg-white overflow-hidden rounded-xl cursor-pointer h-full"
+    >
       <CardContent className="p-4">
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-start gap-3 w-full">
-            <div className="shrink-0 mt-1">{getFileIcon(doc.type)}</div>
+            <div className="shrink-0 mt-1 p-2 bg-gray-50 rounded-full">{getFileIcon(doc.type)}</div>
             <div className="min-w-0 flex-1">
-              <h3 className="font-medium text-gray-900 text-sm line-clamp-2 hover:line-clamp-none group-hover:text-blue-600">
+              <h3 className="font-medium text-gray-900 text-sm line-clamp-2 group-hover:text-blue-600 transition-colors">
                 {doc.name}
               </h3>
               <p className="text-xs text-gray-500 mt-1">
@@ -33,25 +37,27 @@ export function DocumentCard({ doc, getFileIcon, getStatusBadge }: DocumentCardP
         <div className="space-y-3">
           <div className="flex items-center gap-2">{getStatusBadge(doc.status)}</div>
           <div className="flex flex-wrap gap-1">
-            {doc.tags.map((tag, index) => (
-              <Badge
-                key={index}
-                variant="outline"
-                className="text-xs bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100"
-              >
-                {tag}
-              </Badge>
-            ))}
+            {doc.tags
+              .filter(tag => !tag.startsWith('Desc:') && !tag.startsWith('Effective:'))
+              .map((tag, index) => (
+                <Badge 
+                  key={index} 
+                  variant="outline" 
+                  className="text-xs bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100"
+                >
+                  {tag}
+                </Badge>
+              ))}
           </div>
         </div>
 
-        <div className="mt-4 pt-3 border-t border-gray-100 text-xs text-gray-500 space-y-1.5">
+        <div className="mt-4 pt-3 border-t border-gray-200 text-xs text-gray-500 space-y-1.5">
           <div className="flex items-center gap-1.5">
-            <User className="h-3.5 w-3.5" />
+            <User className="h-3.5 w-3.5 text-gray-400" />
             <span className="truncate">{doc.uploadedBy}</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <Clock className="h-3.5 w-3.5" />
+            <Clock className="h-3.5 w-3.5 text-gray-400" />
             <span className="truncate">{doc.uploadedAt}</span>
           </div>
         </div>

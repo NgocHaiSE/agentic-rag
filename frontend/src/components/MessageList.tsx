@@ -82,7 +82,7 @@ export default function MessageList({
   isLoading, 
   isThinking = false, 
   thinkingContent = '',
-  currentTools = []
+  // currentTools = []
 }: Props) {
   const scrollerRef = useRef<HTMLDivElement>(null)
   const [showScrollButton, setShowScrollButton] = useState(false)
