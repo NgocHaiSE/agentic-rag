@@ -14,6 +14,7 @@ import {
   FileImage,
   FileVideo,
   FileCode,
+  User,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -45,6 +46,11 @@ interface OrgUnit {
   parent_id: string | null;
   parent_name?: string | null;
   is_active: boolean;
+}
+
+interface Account {
+  id: string;
+  name: string;
 }
 
 const formatFileSize = (bytes: number): string => {
@@ -87,6 +93,18 @@ const DepartmentDocuments: React.FC = () => {
   const [itemsPerPage] = useState<number>(12);
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [orgUnits, setOrgUnits] = useState<OrgUnit[]>([]);
+  const [docTypes, setDocTypes] = useState<{ id: string; name: string }[]>([]);
+  const [docTypeFilter, setDocTypeFilter] = useState<string>('all');
+  const [authorQuery, setAuthorQuery] = useState<string>('');
+  const [authors, setAuthors] = useState<Account[]>([]);
+
+  // Normalize text for diacritic-insensitive, case-insensitive search
+  const normalize = (s?: string) =>
+    (s || '')
+      .toString()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
 
   const viewDocument = (docId: string): void => {
     if (shelfId && docId) {
@@ -102,7 +120,8 @@ const DepartmentDocuments: React.FC = () => {
       const docs: DocumentItem[] = (data.documents || []).map((d: any) => {
         const md = d.metadata || {};
         const ext = (md.file_path || '').split('.').pop()?.toUpperCase() || '';
-        const author = md.author || md.uploaded_by || 'Không rõ';
+        const authorId = md.author_id || d.author_id || '';
+        const author = md.author || md.uploaded_by || authorId || 'Không rõ';
         const unitId = md.issuing_unit_id || '';
         const unitName = md.issuing_unit_name || md.issuing_unit_id || '';
         const siteName = md.site_name || md.site_id || '';
@@ -128,8 +147,10 @@ const DepartmentDocuments: React.FC = () => {
           uploadedAt: d.created_at ? new Date(d.created_at).toLocaleString() : '',
           status: (md.status || 'Đã xử lý') as StatusType,
           tags,
+          authorId: authorId || undefined,
           issuingUnitId: unitId || undefined,
           issuingUnitName: unitName || undefined,
+          documentTypeName: docType || undefined,
         } as DocumentItem;
       });
       setDocuments(docs);
@@ -151,20 +172,109 @@ const DepartmentDocuments: React.FC = () => {
     }
   };
 
+  const fetchDocTypes = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/metadata/document-types`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const items = (data || []).map((d: any) => ({ id: d.id, name: d.name }));
+      setDocTypes(items);
+    } catch (e) {
+      console.error('Failed to fetch document types:', e);
+      setDocTypes([]);
+    }
+  };
+
+  // Try to fetch accounts mapping (author_id -> author_name)
+  const fetchAuthors = async () => {
+    const candidates = [
+      `${API_BASE_URL}/metadata/accounts`,
+      `${API_BASE_URL}/accounts`,
+      `${API_BASE_URL}/users`,
+    ];
+    for (const url of candidates) {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) continue;
+        const data = await res.json();
+        // Accept a few common shapes
+        const items: Account[] = Array.isArray(data)
+          ? data.map((a: any) => ({ id: a.id || a.user_id || a.uuid, name: a.name || a.full_name || a.username || a.email || '' })).filter((a: Account) => a.id)
+          : Array.isArray(data.accounts)
+            ? data.accounts.map((a: any) => ({ id: a.id || a.user_id || a.uuid, name: a.name || a.full_name || a.username || a.email || '' })).filter((a: Account) => a.id)
+            : [];
+        setAuthors(items);
+        if (items.length) return; // success
+      } catch (e) {
+        // ignore and try next
+      }
+    }
+    setAuthors([]);
+  };
+
   useEffect(() => {
     fetchDocuments();
     fetchOrgUnits();
+    fetchDocTypes();
+    fetchAuthors();
   }, []);
 
   const currentUnit = useMemo(() => orgUnits.find((u) => u.id === shelfId), [orgUnits, shelfId]);
 
   const filteredDocuments = useMemo(() => {
+    const q = normalize(searchQuery).trim();
+    const tokens = q.length ? q.split(/\s+/).filter(Boolean) : [];
+    const authorQ = normalize(authorQuery).trim();
+    const authorTokens = authorQ.length ? authorQ.split(/\s+/).filter(Boolean) : [];
+
+    // Build a name -> id mapping for authors from fetched accounts and fallback from docs
+    const authorMapFromDocs = documents.reduce((m, d) => {
+      if (d.authorId) m.set(d.authorId, d.uploadedBy || '');
+      return m;
+    }, new Map<string, string>());
+    const combinedAuthorMap = new Map<string, string>(authorMapFromDocs);
+    authors.forEach(a => {
+      if (a.id && !combinedAuthorMap.has(a.id)) combinedAuthorMap.set(a.id, a.name || '');
+      if (a.id && a.name) combinedAuthorMap.set(a.id, a.name);
+    });
+
+    // Determine which author IDs match the entered name tokens
+    const matchedAuthorIds = new Set<string>();
+    if (authorTokens.length) {
+      combinedAuthorMap.forEach((name, id) => {
+        const hay = normalize(name);
+        const ok = authorTokens.every(t => hay.includes(t));
+        if (ok) matchedAuthorIds.add(id);
+      });
+    }
+
     return documents
       .filter((doc) => {
         const inShelf = doc.issuingUnitId && doc.issuingUnitId === shelfId;
-        const matchesSearch = doc.name.toLowerCase().includes(searchQuery.toLowerCase());
+
+        // Build a searchable haystack from multiple fields
+        const haystack = normalize([
+          doc.name,
+          doc.issuingUnitName,
+          doc.documentTypeName,
+          doc.type,
+          ...(doc.tags || []),
+        ].join(' '));
+
+        // All tokens must be present (AND match)
+        const matchesSearch = tokens.length === 0 || tokens.every((t) => haystack.includes(t));
+
+        // Separate author matching: search by name, filter by authorId
+        const matchesAuthor = authorTokens.length === 0 || (doc.authorId ? matchedAuthorIds.has(doc.authorId) : false);
+
+        // File format filter (by extension)
         const matchesType = filterType === 'all' || doc.type === filterType;
-        return inShelf && matchesSearch && matchesType;
+
+        // Document type (Loại văn bản) filter
+        const matchesDocType =
+          docTypeFilter === 'all' || normalize(doc.documentTypeName) === normalize(docTypeFilter);
+
+        return inShelf && matchesSearch && matchesAuthor && matchesType && matchesDocType;
       })
       .sort((a, b) => {
         if (sortBy === 'name') return a.name.localeCompare(b.name);
@@ -176,7 +286,12 @@ const DepartmentDocuments: React.FC = () => {
         if (sortBy === 'oldest') return new Date(a.uploadedAt).getTime() - new Date(b.uploadedAt).getTime();
         return new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime();
       });
-  }, [documents, searchQuery, filterType, sortBy, shelfId]);
+  }, [documents, searchQuery, authorQuery, authors, filterType, sortBy, shelfId, docTypeFilter]);
+
+  // Reset to page 1 whenever filters/search change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, authorQuery, filterType, docTypeFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filteredDocuments.length / itemsPerPage));
   const startIndex = (currentPage - 1) * itemsPerPage;
@@ -245,6 +360,17 @@ const DepartmentDocuments: React.FC = () => {
               />
             </div>
 
+            {/* Author search */}
+            <div className="w-64 relative">
+                <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-blue-400" />
+                <Input
+                  placeholder="Tìm theo tác giả..."
+                  value={authorQuery}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAuthorQuery(e.target.value)}
+                  className="pl-10 h-10 border-blue-200 focus:border-blue-500 focus:ring-blue-500 bg-white rounded-md transition-all duration-200 hover:shadow-sm"
+                />
+              </div>
+
             {/* Sort, type & view toggle */}
             <div className="flex items-center gap-3">
               <Select value={filterType} onValueChange={setFilterType}>
@@ -257,6 +383,19 @@ const DepartmentDocuments: React.FC = () => {
                   <SelectItem value="XLSX">Excel</SelectItem>
                   <SelectItem value="DOCX">Word</SelectItem>
                   <SelectItem value="JPG">Hình ảnh</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {/* Loại văn bản */}
+              <Select value={docTypeFilter} onValueChange={setDocTypeFilter}>
+                <SelectTrigger className="w-[140px] h-10 border-blue-200 bg-white rounded-md">
+                  <SelectValue placeholder="Loại văn bản" />
+                </SelectTrigger>
+                <SelectContent className="z-[100] bg-white border-blue-200 max-h-64 overflow-y-auto">
+                  <SelectItem value="all">Tất cả loại</SelectItem>
+                  {docTypes.map((t) => (
+                    <SelectItem key={t.id} value={t.name}>{t.name}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
 
@@ -390,3 +529,4 @@ const DepartmentDocuments: React.FC = () => {
 };
 
 export default DepartmentDocuments;
+

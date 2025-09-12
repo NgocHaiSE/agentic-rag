@@ -34,8 +34,10 @@ export interface DocumentItem {
   uploadedAt: string;
   status: StatusType;
   tags: string[];
+  authorId?: string;
   issuingUnitId?: string;
   issuingUnitName?: string;
+  documentTypeName?: string;
 }
 
 // Detailed document payload returned by GET /documents/{id}

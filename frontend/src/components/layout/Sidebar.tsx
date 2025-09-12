@@ -1,8 +1,7 @@
-import { cn } from "@/lib/utils"
+﻿import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
   Home,
-  Terminal,
   Settings,
   HardDrive,
   HelpCircle,
@@ -80,13 +79,13 @@ type SidebarItem = { name: string; icon: React.ElementType; path: string; subite
 const sidebarItems = [
   { name: "Trang chủ", icon: Home, path: "/", subitems: [] },
   {
-    name: "Tài liệu", 
-    icon: Terminal,
+    name: "Tài liệu",
+    icon: FolderOpen,
     path: "/documents",
     subitems: [
       { name: "Upload", icon: Upload, path: "/documents/upload" },
       { name: "Quản lý tài liệu", icon: FolderOpen, path: "/documents/manage" },
-      { name: "Tài liệu chính", icon: Terminal, path: "/documents" },
+      { name: "Danh sách", icon: FolderOpen, path: "/documents" },
     ]
   },
   // { name: "Admin", icon: Brain, path: "/admin", 
@@ -94,7 +93,6 @@ const sidebarItems = [
   //     { name: "Tài liệu", icon: FolderOpen, path: "/admin/documents"}
   //   ] },
 ]
-
 const bottomItems = [
   { name: "Cài đặt", icon: Settings, path: "/settings" },
   { name: "Hỗ trợ", icon: HelpCircle, path: "/help" },
@@ -144,7 +142,7 @@ export function Sidebar() {
       "transition-all duration-200",
       "hover:translate-x-1 active:scale-95",
       isActive && "bg-blue-50 text-blue-600 font-medium",
-      expanded ? (hasSubitems ? "justify-between pr-2" : "justify-start") : "justify-center px-2"
+      expanded ? "justify-start pl-4" : "justify-center px-2"
     )
 
     if (hasSubitems && expanded) {
@@ -156,18 +154,18 @@ export function Sidebar() {
           className={buttonClassName}
           onClick={(e) => toggleSubmenu(item.name, e)}
         >
-          <div className="flex items-center">
-            <item.icon className="h-5 w-5 mr-3 transition-colors group-hover:text-blue-600" />
-            <span className="text-sm">{item.name}</span>
+          <div className="flex items-center w-full">
+            <item.icon className={cn("h-5 w-5 transition-colors group-hover:text-blue-600", expanded ? "mr-3" : "")} />
+            {expanded && <span className="text-sm flex-1 text-left">{item.name}</span>}
+            {hasSubitems && (
+              <ChevronDown 
+                className={cn(
+                  "h-4 w-4 transition-transform duration-200 ml-auto",
+                  isExpanded ? "rotate-180" : ""
+                )} 
+              />
+            )}
           </div>
-          {hasSubitems && (
-            <ChevronDown 
-              className={cn(
-                "h-4 w-4 transition-transform duration-200",
-                isExpanded ? "rotate-180" : ""
-              )} 
-            />
-          )}
         </Button>
       )
     } else {
@@ -179,8 +177,10 @@ export function Sidebar() {
             size="sm"
             className={buttonClassName}
           >
-            <item.icon className="h-5 w-5 mr-3 transition-colors group-hover:text-blue-600" />
-            <span className="text-sm">{item.name}</span>
+            <div className="flex items-center w-full">
+              <item.icon className={cn("h-5 w-5 transition-colors group-hover:text-blue-600", expanded ? "mr-3" : "")} />
+              {expanded && <span className="text-sm flex-1 text-left">{item.name}</span>}
+            </div>
           </Button>
         </Link>
       )
@@ -221,7 +221,7 @@ export function Sidebar() {
                       variant="ghost"
                       size="sm"
                       className={cn(
-                        "w-full justify-start text-gray-600 hover:text-blue-600 hover:bg-blue-50 pl-8",
+                        "w-full flex items-center justify-start text-gray-600 hover:text-blue-600 hover:bg-blue-50 pl-12",
                         "transform transition-all duration-200",
                         "hover:translate-x-1 hover:scale-[1.02]",
                         location.pathname === subitem.path && "bg-blue-50 text-blue-600 font-medium translate-x-1 scale-[1.02]",
@@ -234,7 +234,7 @@ export function Sidebar() {
                       }}
                     >
                       <subitem.icon className="h-4 w-4 mr-2 transition-colors" />
-                      <span className="text-sm transition-all duration-200">{subitem.name}</span>
+                      <span className="text-sm transition-all duration-200 text-left">{subitem.name}</span>
                     </Button>
                   </Link>
                 ))}
@@ -315,3 +315,5 @@ export function Sidebar() {
     </div>
   )
 }
+
+

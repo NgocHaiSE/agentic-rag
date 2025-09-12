@@ -16,7 +16,7 @@ export function DocumentCard({ doc, getFileIcon, getStatusBadge, onClick }: Docu
   return (
    <Card 
       onClick={onClick} 
-      className="group hover:shadow-md transition-shadow duration-200 border border-gray-200 bg-white overflow-hidden rounded-xl cursor-pointer h-full"
+      className="group hover:shadow-md transition-shadow duration-200 border border-blue-100 bg-blue-50/5 overflow-hidden rounded-xl cursor-pointer h-full"
     >
       <CardContent className="p-4">
         <div className="flex items-start justify-between mb-3">
@@ -38,14 +38,20 @@ export function DocumentCard({ doc, getFileIcon, getStatusBadge, onClick }: Docu
           <div className="flex items-center gap-2">{getStatusBadge(doc.status)}</div>
           <div className="flex flex-wrap gap-1">
             {doc.tags
-              .filter(tag => !tag.startsWith('Desc:') && !tag.startsWith('Effective:'))
-              .map((tag, index) => (
-                <Badge 
-                  key={index} 
-                  variant="outline" 
+              .filter(tag => !tag.startsWith('Desc:') && !tag.startsWith('Effective:') && !tag.startsWith('Access:'))
+              .map((tag) => {
+                const prefixes = ['Type:', 'Unit:', 'Site:']
+                const matched = prefixes.find(p => tag.startsWith(p))
+                return matched ? tag.slice(matched.length).trim() : tag
+              })
+              .filter(tag => tag.length > 0)
+              .map((label, index) => (
+                <Badge
+                  key={index}
+                  variant="outline"
                   className="text-xs bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100"
                 >
-                  {tag}
+                  {label}
                 </Badge>
               ))}
           </div>
